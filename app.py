@@ -1,10 +1,15 @@
-import os
-import requests
-from bs4 import BeautifulSoup
-import schedule
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 import time
+import os
+import json
+import sqlite3
 from dotenv import load_dotenv
+import requests
 from datetime import datetime
+import schedule
 
 # Load the .env file
 load_dotenv()
@@ -14,51 +19,98 @@ weibo_url = os.getenv('WEIBO_URL')
 message_webhook_url = os.getenv('MESSAGE_WEBHOOK_URL')
 status_webhook_url = os.getenv('STATUS_WEBHOOK_URL')
 
-# To store last parsed post
-last_post = None
+class WeiboScrapper:
+    def __init__(self):
+        # Setup driver
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        # create a sqlite database to store id
+        # change to mongodb later
+        self.db = sqlite3.connect('weibo.db')
+        self.cursor = self.db.cursor()
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS weibo (id INTEGER PRIMARY KEY)''')
+        self.db.commit()
 
-def send_message(url, content):
-    # This is a basic structure of a discord embed, adjust according to your needs
-    data = {
-        "embeds": [
-            {
-                "title": "New Weibo Post",
-                "description": content['text'],
-                "image": {"url": content['img']}
-            }
-        ]
-    }
-    response = requests.post(url, json=data)
-    return response.status_code
 
-def send_status():
-    data = {"content": f"Script is running - {datetime.now().isoformat()}"}
-    response = requests.post(status_webhook_url, json=data)
-    return response.status_code
+    def start(self):
+        # Run the scan immediately and then every 10 minutes
+        self.scan()
+        schedule.every(10).minutes.do(self.scan)
 
-def parse_weibo():
-    global last_post
-    page = requests.get(weibo_url)
-    soup = BeautifulSoup(page.content, 'html.parser')
+        # Run send_status immediately and then every hour
+        schedule.every(1).hour.do(self.send_status)
 
-    # Adjust the below line according to the structure of your Weibo page
-    posts = soup.find_all('div', class_='weibo_post')
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
 
-    for post in posts:
-        # Again, this is dependent on the structure of the Weibo page
-        text = post.find('div', class_='weibo_text').get_text()
-        img = post.find('img')['src']
         
-        if post != last_post:
-            send_message(message_webhook_url, {'text': text, 'img': img})
-            last_post = post
+    def get_weibo_content_once(self):
+        try:
+            self.driver.get(os.getenv('WEIBO_URL'))
+            # Wait for the dynamic content to load
+            time.sleep(5)
+            self.driver.implicitly_wait(5)
+            pre_tag = self.driver.find_element(By.TAG_NAME, 'pre')
+            json_text = pre_tag.text
+            self.driver.quit()
+        except Exception as e:
+            print(e)
+            self.driver.quit()
+            return None
+        content = json.loads(json_text) # content is a dictionary
+        return content['data']['list']
+    
+    def check_id(self,item):
+        # if id is not in the database, return True
+        # else return False
+        weibo_item_id=item['id']
+        self.cursor.execute('''SELECT * FROM weibo WHERE id=?''',(weibo_item_id,))
+        if self.cursor.fetchone() is None:
+            #write the id to the database
+            self.cursor.execute('''INSERT INTO weibo (id) VALUES (?)''',(weibo_item_id,))
+            self.db.commit()
+            return True
         else:
-            break
+            return False       
 
-# Scheduling tasks
-schedule.every(10).minutes.do(parse_weibo)  # replace X with the desired interval
-schedule.every(1).hours.do(send_status)
+    def get_weibo_content_loop(self):
+        i=0
+        print('getting weibo content...')
+        while True:
+            content = self.get_weibo_content_once()
+            if content:
+                break   
+            print('retrying...')
+            time.sleep(5)
+            i+=1
+            print(i)
+            if i>50:
+                print('failed')
+                return None
+        return content
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+    def scan(self):
+        content = self.get_weibo_content_loop()
+        for item in content:
+            if self.check_id(item):
+                self.parse_item(item)
+                time.sleep(5)
+
+    def parse_item(self,item):
+        # parse item and store it in the database
+        # send text_raw to discord
+        # add separator to text_raw
+        text_raw = item['text_raw'] + '\n' + '-'*50 + '\n' + '-'*50
+        data = {"content": text_raw}
+        response = requests.post(message_webhook_url, json=data)
+        return response.status_code
+
+    def send_status():
+        data = {"content": f"Script is running - {datetime.now().isoformat()}"}
+        response = requests.post(status_webhook_url, json=data)
+        return response.status_code
+    
+
+if __name__ == "__main__":
+    weibo_scrapper = WeiboScrapper()
+    weibo_scrapper.start()
