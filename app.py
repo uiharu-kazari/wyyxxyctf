@@ -1,5 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 import time
@@ -22,7 +23,12 @@ status_webhook_url = os.getenv('STATUS_WEBHOOK_URL')
 class WeiboScrapper:
     def __init__(self):
         # Setup driver
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        # add headless
+        options = Options()
+        options.add_argument('--headless')
+        self.driver = webdriver.Chrome(\
+            service=Service(ChromeDriverManager().install())\
+                ,options=options)
         # create a sqlite database to store id
         # change to mongodb later
         self.db = sqlite3.connect('weibo.db')
