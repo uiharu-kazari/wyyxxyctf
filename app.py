@@ -97,18 +97,32 @@ class WeiboScrapper:
 
     def scan(self):
         content = self.get_weibo_content_loop()
-        for item in content:
-            if self.check_id(item):
-                self.parse_item(item)
-                time.sleep(5)
+        if content:
+            for item in content:
+                if self.check_id(item):
+                    self.parse_item(item)
+                    time.sleep(5)
+        else:
+            print('failed to get content')
+            return None
 
     def parse_item(self,item):
         # parse item and store it in the database
         # send text_raw to discord
         # add separator to text_raw
-        text_raw = item['text_raw'] + '\n' + '-'*50 + '\n' + '-'*50
-        data = {"content": text_raw}
-        response = requests.post(message_webhook_url, json=data)
+        text_raw = item['text_raw']
+        # use discord embed to display the content
+        # "embed_color": 16738740
+        
+        message ={
+            "embeds": [{
+                "title": "塔菲の新微博喵~",
+                "description": text_raw,
+                "color": 16738740
+            },
+            ]
+        }
+        response = requests.post(message_webhook_url, json=message)
         return response.status_code
 
     def send_status():

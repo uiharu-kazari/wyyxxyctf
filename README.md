@@ -1,5 +1,5 @@
 # wyyxxyctf
-我永远喜欢永雏塔菲
+我永遠喜歡永雛塔菲
 
 ## Prompts
 Act as an experienced python engineer, write a script to do the following tasks:
