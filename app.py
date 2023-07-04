@@ -54,14 +54,12 @@ class WeiboScrapper:
         try:
             self.driver.get(os.getenv('WEIBO_URL'))
             # Wait for the dynamic content to load
-            time.sleep(5)
-            self.driver.implicitly_wait(5)
+            time.sleep(10)
+            self.driver.implicitly_wait(20)
             pre_tag = self.driver.find_element(By.TAG_NAME, 'pre')
             json_text = pre_tag.text
-            self.driver.quit()
         except Exception as e:
             print(e)
-            self.driver.quit()
             return None
         content = json.loads(json_text) # content is a dictionary
         return content['data']['list']
@@ -87,10 +85,10 @@ class WeiboScrapper:
             if content:
                 break   
             print('retrying...')
-            time.sleep(5)
+            time.sleep(60)
             i+=1
             print(i)
-            if i>50:
+            if i>10:
                 print('failed')
                 return None
         return content
