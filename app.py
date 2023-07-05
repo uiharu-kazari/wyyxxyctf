@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 import requests
 from datetime import datetime
 import schedule
+import pytz
+import random
 
 # Load the .env file
 load_dotenv()
@@ -20,21 +22,34 @@ weibo_url = os.getenv('WEIBO_URL')
 message_webhook_url = os.getenv('MESSAGE_WEBHOOK_URL')
 status_webhook_url = os.getenv('STATUS_WEBHOOK_URL')
 
+
 class WeiboScrapper:
     def __init__(self):
         # Setup driver
         # add headless
-        options = Options()
-        options.add_argument('--headless')
-        self.driver = webdriver.Chrome(\
-            service=Service(ChromeDriverManager().install())\
-                ,options=options)
+        self.driver = self.new_driver()
         # create a sqlite database to store id
         # change to mongodb later
         self.db = sqlite3.connect('weibo.db')
         self.cursor = self.db.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS weibo (id INTEGER PRIMARY KEY)''')
         self.db.commit()
+        with open('kawaii_content.json', 'r') as f:
+            data = json.load(f)
+        self.kawaii_emojis = data['kawaii_emojis']
+        self.kawaii_texts = data['kawaii_texts']
+        self.kawaii_titles = data['kawaii_titles']
+
+    
+    def new_driver(self):
+        # Setup driver
+        # add headless
+        options = Options()
+        options.add_argument('--headless')
+        driver = webdriver.Chrome(\
+            service=Service(ChromeDriverManager().install())\
+                ,options=options)
+        return driver
 
 
     def start(self):
@@ -43,6 +58,7 @@ class WeiboScrapper:
         schedule.every(10).minutes.do(self.scan)
 
         # Run send_status immediately and then every hour
+        self.send_status()
         schedule.every(1).hour.do(self.send_status)
 
         while True:
@@ -51,6 +67,13 @@ class WeiboScrapper:
 
         
     def get_weibo_content_once(self):
+        # check if the driver is alive
+        if self.driver.service.is_connectable():
+            pass
+        else:
+            self.driver.quit()
+            self.driver = self.new_driver()
+
         try:
             self.driver.get(os.getenv('WEIBO_URL'))
             # Wait for the dynamic content to load
@@ -123,9 +146,30 @@ class WeiboScrapper:
         response = requests.post(message_webhook_url, json=message)
         return response.status_code
 
-    def send_status():
-        data = {"content": f"Script is running - {datetime.now().isoformat()}"}
-        response = requests.post(status_webhook_url, json=data)
+    def send_status(self):
+        # send status to discord, say that the script is running, add some random kawaii emoji and text
+        # use discord embed to display the content
+        embed_color = 16738740
+        emoji = random.choice(self.kawaii_emojis)
+        text = random.choice(self.kawaii_texts)
+        title = random.choice(self.kawaii_titles)
+        machine_info = f"{os.uname().nodename} {os.uname().machine}"
+        # TODO: use chatgpt to generate random text
+        # get current time, up to seconds, timezone GMT+9
+        timezone = pytz.timezone('Etc/GMT-9')
+        # Get current time up to seconds in GMT+9
+        time_now = datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        message = {
+            "embeds": [
+                {
+                    "title": title,
+                    "description": f"{emoji} {text} @ {time_now} -- {machine_info}",
+                    "color": embed_color
+                }
+            ]
+        }
+        response = requests.post(status_webhook_url, json=message)
         return response.status_code
     
 
