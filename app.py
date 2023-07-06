@@ -13,6 +13,7 @@ from datetime import datetime
 import schedule
 import pytz
 import random
+import platform
 
 # Load the .env file
 load_dotenv()
@@ -34,7 +35,7 @@ class WeiboScrapper:
         self.cursor = self.db.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS weibo (id INTEGER PRIMARY KEY)''')
         self.db.commit()
-        with open('kawaii_content.json', 'r') as f:
+        with open('kawaii_content.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
         self.kawaii_emojis = data['kawaii_emojis']
         self.kawaii_texts = data['kawaii_texts']
@@ -102,7 +103,7 @@ class WeiboScrapper:
 
     def get_weibo_content_loop(self):
         i=0
-        print('getting weibo content...')
+        print(f'getting weibo content... @ {datetime.now()}')
         while True:
             content = self.get_weibo_content_once()
             if content:
@@ -132,14 +133,23 @@ class WeiboScrapper:
         # send text_raw to discord
         # add separator to text_raw
         text_raw = item['text_raw']
+        created_at = item['created_at']
         # use discord embed to display the content
         # "embed_color": 16738740
-        
+        dt = datetime.strptime(created_at, '%a %b %d %H:%M:%S %z %Y')
+        # Convert to UTC
+        # use GMT+8
+        timezone = pytz.timezone('Etc/GMT-8')
+        dt = dt.astimezone(timezone)
+        # Format as required by Discord
+        discord_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         message ={
             "embeds": [{
                 "title": "塔菲の新微博喵~",
+                "url": "https://weibo.com/7618923072?refer_flag=1001030103_",
                 "description": text_raw,
-                "color": 16738740
+                "color": 16738740,
+                "timestamp": discord_timestamp
             },
             ]
         }
@@ -153,7 +163,10 @@ class WeiboScrapper:
         emoji = random.choice(self.kawaii_emojis)
         text = random.choice(self.kawaii_texts)
         title = random.choice(self.kawaii_titles)
-        machine_info = f"{os.uname().nodename} {os.uname().machine}"
+        if platform.system() == 'Windows':
+            machine_info = f"{platform.node()} {platform.machine()}"
+        else:
+            machine_info = f"{os.uname().nodename} {os.uname().machine}"
         # TODO: use chatgpt to generate random text
         # get current time, up to seconds, timezone GMT+9
         timezone = pytz.timezone('Etc/GMT-9')
